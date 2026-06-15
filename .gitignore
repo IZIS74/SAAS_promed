@@ -1,0 +1,4 @@
+.streamlit/
+projets/
+__pycache__/
+bibliotheque.json
