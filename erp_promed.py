@@ -4,13 +4,9 @@ import json
 import os
 import re
 import streamlit.components.v1 as components
-
-st.set_page_config(page_title="ERP Menuiserie Alu v10.2", layout="wide")
-
-# ==========================================
-# LE TEST ULTIME DE LECTURE DU FICHIER
-# ==========================================
 from supabase import create_client, Client
+
+st.set_page_config(page_title="OPTIALU", layout="wide")
 
 # ==========================================
 # CONNEXION SUPABASE SAAS
@@ -22,9 +18,9 @@ try:
     st.sidebar.success("🟢 Connecté à Supabase !")
 except Exception as e:
     st.sidebar.error("🔴 Erreur de configuration Supabase. Vérifiez les secrets.")
+
 # ==========================================
-# ==========================================
-# 🔐 GESTION DE L'AUTHENTIFICATION (LOGIN)
+# 🔐 GESTION DE L'AUTHENTIFICATION (MULTI-TENANT)
 # ==========================================
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -32,70 +28,114 @@ if "access_token" not in st.session_state:
     st.session_state.access_token = None
 if "refresh_token" not in st.session_state:
     st.session_state.refresh_token = None
+if "entreprise_id" not in st.session_state:
+    st.session_state.entreprise_id = None
 
-# 1. On rappelle à Supabase qui est connecté à chaque rechargement de page
+# États pour l'affichage personnalisé
+if "user_nom" not in st.session_state:
+    st.session_state.user_nom = None
+if "nom_entreprise" not in st.session_state:
+    st.session_state.nom_entreprise = None
+
+# On rappelle à Supabase qui est connecté à chaque rechargement de page
 if st.session_state.access_token and st.session_state.refresh_token:
     try:
         supabase.auth.set_session(st.session_state.access_token, st.session_state.refresh_token)
+        
+        # Sécurité : Si on perd le nom ou l'entreprise en mémoire, on les récupère
+        if st.session_state.entreprise_id and (not st.session_state.get('user_nom') or not st.session_state.get('nom_entreprise')):
+            user_id = st.session_state.user.id if st.session_state.user else None
+            if user_id:
+                profile_res = supabase.table("profiles").select("nom").eq("id", user_id).execute()
+                if profile_res.data:
+                    st.session_state.user_nom = profile_res.data[0].get("nom", "Utilisateur")
+            
+            ent_res = supabase.table("entreprises").select("nom_entreprise").eq("id", st.session_state.entreprise_id).execute()
+            if ent_res.data:
+                st.session_state.nom_entreprise = ent_res.data[0].get("nom_entreprise", "Inconnue")
     except:
-        st.session_state.user = None # Si la session a expiré
+        st.session_state.user = None 
 
 def logout():
     supabase.auth.sign_out()
-    st.session_state.user = None
-    st.session_state.access_token = None
-    st.session_state.refresh_token = None
-    st.cache_data.clear() # On vide le cache par sécurité
+    for key in ["user", "access_token", "refresh_token", "entreprise_id", "user_nom", "nom_entreprise"]:
+        st.session_state[key] = None
+    st.cache_data.clear() 
+    st.rerun()
 
-# 2. Écran de connexion si non connecté
+# Écran de connexion si non connecté
 if st.session_state.user is None:
-    st.markdown('<div class="main-title">🔐 Connexion ERP ALUMED</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🔐 Connexion OPTIALU</div>', unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.info("Veuillez vous connecter pour accéder à votre espace.")
+        st.info("Veuillez vous connecter pour accéder à l'espace de votre entreprise.")
         email = st.text_input("Adresse E-mail")
         password = st.text_input("Mot de passe", type="password")
         
         if st.button("Se connecter", type="primary", use_container_width=True):
             try:
-                # On s'authentifie
                 response = supabase.auth.sign_in_with_password({"email": email, "password": password})
                 
-                # On sauvegarde l'identité ET les clés de session secrètes
                 st.session_state.user = response.user
                 st.session_state.access_token = response.session.access_token
                 st.session_state.refresh_token = response.session.refresh_token
                 
-                # CRUCIAL : On force Streamlit à oublier le tableau vide d'avant !
-                st.cache_data.clear() 
+                # Récupération du profil (ID entreprise + Nom utilisateur)
+                user_id = response.user.id
+                profile_res = supabase.table("profiles").select("entreprise_id", "nom").eq("id", user_id).execute()
                 
-                st.rerun()
+                if profile_res.data:
+                    st.session_state.entreprise_id = profile_res.data[0]["entreprise_id"]
+                    st.session_state.user_nom = profile_res.data[0].get("nom", "Utilisateur")
+                    
+                    # Récupération du nom de l'entreprise textuel
+                    ent_res = supabase.table("entreprises").select("nom_entreprise").eq("id", st.session_state.entreprise_id).execute()
+                    if ent_res.data:
+                        st.session_state.nom_entreprise = ent_res.data[0].get("nom_entreprise", "Inconnue")
+                    
+                    st.cache_data.clear() 
+                    st.rerun()
+                else:
+                    st.error("🔴 Votre compte n'est lié à aucune entreprise. Contactez l'administrateur.")
+                    supabase.auth.sign_out() 
+                    st.session_state.user = None
             except Exception as e:
                 st.error("🔴 Identifiants incorrects. Veuillez réessayer.")
                 
-    st.stop() # 🛑 Bloque l'exécution du reste de l'ERP si non connecté
+    st.stop() 
 
-# --- Si on arrive ici, c'est que l'utilisateur EST connecté ---
+# --- Utilisateur authentifié & lié à une entreprise ---
+
+# 🌟 TITRE PRINCIPAL MODIFIÉ
+st.markdown('<div class="main-title">OPTIALU</div>', unsafe_allow_html=True)
+
+# 🌟 BANDEAU D'AFFICHAGE (S'affichera sous le titre)
+nom_ent_affiche = st.session_state.get('nom_entreprise') or "Inconnue"
+nom_usr_affiche = st.session_state.get('user_nom') or "Utilisateur"
+
+st.markdown(
+    f"""
+    <div style="background-color: #f0f2f6; padding: 12px 20px; border-radius: 8px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid #1E3A8A;">
+        <span style="font-size: 16px; color: #333;">🏢 Entreprise : <strong>{nom_ent_affiche}</strong></span>
+        <span style="font-size: 16px; color: #333;">👤 Utilisateur : <strong>{nom_usr_affiche}</strong></span>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
+
 st.sidebar.button("🚪 Se déconnecter", on_click=logout, use_container_width=True)
 st.sidebar.markdown("---")
-# ==========================================
-# GESTION DES DOSSIERS (PROJETS ET BIBLIOTHÈQUE)
-# ==========================================
-# ==========================================
-# GESTION DES DOSSIERS (PROJETS ET BIBLIOTHÈQUE)
-# ==========================================
-DOSSIER_PROJETS = "projets"
-os.makedirs(DOSSIER_PROJETS, exist_ok=True)
 
-@st.cache_data(ttl=3600) # Garde le catalogue en mémoire pendant 1h pour ne pas exploser le serveur
+# ==========================================
+# GESTION DES DONNÉES & CATALOGUE
+# ==========================================
+@st.cache_data(ttl=3600) 
 def load_app_library():
     try:
-        # Requête vers Supabase
         response = supabase.table("bibliotheque_gammes").select("*").execute()
         data_sql = response.data
         
-        # On reformate les données pour que le reste de ton code Python (calculs) continue de marcher
         legacy_data = []
         for item in data_sql:
             legacy_data.append({
@@ -113,6 +153,7 @@ def load_app_library():
     except Exception as e:
         st.error(f"⚠️ Erreur de chargement du catalogue depuis le Cloud : {e}")
         return []
+
 BIBLIOTHEQUE = load_app_library()
 PALETTE_COULEURS = ["#1E40AF", "#10B981", "#D97706", "#DC2626", "#7C3AED", "#0891B2", "#EC4899"]
 choix_types_dynamiques = sorted(list(set([str(x.get("Type Ouvrage", "")).strip() for x in BIBLIOTHEQUE if str(x.get("Type Ouvrage", "")).strip() != ""])))
@@ -129,10 +170,13 @@ def get_default_df():
         "Vitrage": ""
     }])
 
-if "chassis_rows_v26" not in st.session_state:
-    st.session_state.chassis_rows_v26 = get_default_df()
+# Initialisation des états de session pour le projet actif avec la version 27
+if "chassis_rows_v27" not in st.session_state:
+    st.session_state.chassis_rows_v27 = get_default_df()
 if "current_project_name" not in st.session_state:
     st.session_state.current_project_name = "Nouveau Projet (Non Sauvegardé)"
+if "current_project_id" not in st.session_state:
+    st.session_state.current_project_id = None
 
 # --- Injection CSS ---
 st.markdown("""
@@ -167,87 +211,85 @@ def clean_string(s):
     if not s: return ""
     return re.sub(r'\s+', '', str(s)).upper().strip()
 
+# ==========================================
+# 📁 GESTION SÉCURISÉE DES PROJETS (SAAS)
+# ==========================================
 st.sidebar.header("📁 Gestion des Projets")
 
-# --- 1. OPTIMISATION : Charger la liste des projets UNE SEULE FOIS ---
 def fetch_project_list():
     try:
-        response = supabase.table("projets").select("nom_projet").execute()
-        return [p["nom_projet"] for p in response.data]
+        response = supabase.table("projets").select("id, nom_projet").eq("entreprise_id", st.session_state.entreprise_id).execute()
+        return response.data  
     except:
         return []
 
-if "liste_projets_sauvegardes" not in st.session_state:
-    st.session_state.liste_projets_sauvegardes = fetch_project_list()
+st.session_state.liste_projets_sauvegardes = fetch_project_list()
+projets_existants = st.session_state.liste_projets_sauvegardes
 
-fichiers_existants = st.session_state.liste_projets_sauvegardes
-
-# --- 2. Créer un nouveau projet ---
+# --- Créer un nouveau projet ---
 nouveau_projet = st.sidebar.text_input("➕ Créer un nouveau projet :", placeholder="Ex: Villa Dupont")
 if st.sidebar.button("Créer ce projet", use_container_width=True):
     if nouveau_projet:
-        nom_nettoye = clean_string(nouveau_projet)
-        if nom_nettoye not in clean_string(str(fichiers_existants)):
-            st.session_state.current_project_name = nouveau_projet
-            st.session_state.chassis_rows_v26 = get_default_df()
+        data_json = json.loads(st.session_state.chassis_rows_v27.to_json(orient="records", force_ascii=False))
+        try:
+            response = supabase.table("projets").insert({
+                "user_id": st.session_state.user.id,
+                "entreprise_id": st.session_state.entreprise_id, 
+                "nom_projet": nouveau_projet,
+                "donnees": data_json
+            }).execute()
             
-            try:
-                # On convertit le tableau en JSON et on l'envoie dans Supabase
-                data_json = json.loads(st.session_state.chassis_rows_v26.to_json(orient="records", force_ascii=False))
-                supabase.table("projets").insert({
-                    "user_id": st.session_state.user.id,
-                    "nom_projet": nouveau_projet,
-                    "donnees": data_json
-                }).execute()
-                
-                # On met à jour la mémoire de l'application pour éviter l'écran gris
+            if response.data:
+                st.session_state.current_project_id = response.data[0]["id"]
+                st.session_state.current_project_name = nouveau_projet
+                st.session_state.chassis_rows_v27 = get_default_df()
                 st.session_state.liste_projets_sauvegardes = fetch_project_list()
-                
                 st.sidebar.success(f"Projet '{nouveau_projet}' créé !")
                 st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"Erreur de création : {e}")
-        else:
-            st.sidebar.error("Ce nom de projet existe déjà.")
+        except Exception as e:
+            st.sidebar.error(f"Erreur de création : {e}")
 
 st.sidebar.markdown("---")
 
-# --- 3. Charger un projet existant (CORRECTION ORDRE DES COLONNES) ---
-projet_selectionne = st.sidebar.selectbox("📂 Projets existants :", ["-- Sélectionner --"] + fichiers_existants)
+# --- Charger un projet existant ---
+projet_options = {p["nom_projet"]: p["id"] for p in projets_existants}
+projet_selectionne = st.sidebar.selectbox("📂 Projets existants :", ["-- Sélectionner --"] + list(projet_options.keys()))
+
 if st.sidebar.button("Charger ce projet", use_container_width=True):
     if projet_selectionne != "-- Sélectionner --":
+        target_id = projet_options[projet_selectionne]
         try:
-            # On récupère les données JSON depuis Supabase
-            response = supabase.table("projets").select("donnees").eq("nom_projet", projet_selectionne).execute()
+            response = supabase.table("projets").select("donnees").eq("id", target_id).eq("entreprise_id", st.session_state.entreprise_id).execute()
             if response.data:
                 df_charge = pd.DataFrame(response.data[0]["donnees"])
-                
-                # 🛠️ CORRECTION : On force l'ordre exact des colonnes pour ne pas désorganiser le Data Editor
                 colonnes_ordre = ["Repère", "Ouvrage", "Largeur (L)", "Hauteur (H)", "Qté", "Volet Roulant", "H Caisson", "Vitrage"]
                 df_charge = df_charge.reindex(columns=colonnes_ordre)
                 
-                st.session_state.chassis_rows_v26 = df_charge
+                st.session_state.chassis_rows_v27 = df_charge
                 st.session_state.current_project_name = projet_selectionne
+                st.session_state.current_project_id = target_id
                 st.rerun()
         except Exception as e:
             st.sidebar.error("Erreur lors du chargement.")
 
 st.sidebar.markdown("---")
 
-# --- 4. Sauvegarder les modifications ---
+# --- Sauvegarder les modifications ---
 st.sidebar.info(f"Projet actif : **{st.session_state.current_project_name}**")
 if st.sidebar.button("💾 SAUVEGARDER LES MODIFICATIONS", type="primary", use_container_width=True):
-    if st.session_state.current_project_name != "Nouveau Projet (Non Sauvegardé)":
+    if st.session_state.current_project_id is not None:
         try:
-            # On met à jour la ligne correspondante dans Supabase
-            data_json = json.loads(st.session_state.chassis_rows_v26.to_json(orient="records", force_ascii=False))
-            supabase.table("projets").update({"donnees": data_json}).eq("nom_projet", st.session_state.current_project_name).execute()
+            data_json = json.loads(st.session_state.chassis_rows_v27.to_json(orient="records", force_ascii=False))
+            supabase.table("projets").update({"donnees": data_json}).eq("id", st.session_state.current_project_id).eq("entreprise_id", st.session_state.entreprise_id).execute()
             st.sidebar.success("Projet sauvegardé avec succès dans le cloud !")
         except Exception as e:
             st.sidebar.error(f"Erreur lors de la sauvegarde : {e}")
     else:
-        st.sidebar.error("Veuillez d'abord créer un projet en lui donnant un nom plus haut.")
+        st.sidebar.error("Veuillez d'abord créer ou charger un projet valide.")
 
+# ==========================================
+# FONCTIONS DE CALCUL ET INTERFACE 
+# ==========================================
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Navigation")
 
@@ -296,14 +338,13 @@ def generer_reperes_auto(df):
     df_out["Repère"] = new_reperes
     return df_out
 
-# ---> ICI : MODIFICATION DU GRAND TITRE BLEU <---
-st.markdown('<div class="main-title">📊 ERP PRODUCTION NUMÉRIQUE V10.2 — ALUMED</div>', unsafe_allow_html=True)
+
 NOM_PROJET = st.session_state.current_project_name
 
 if menu_selection == "📝 Saisie des Ouvrages":
     st.markdown(f'<div class="section-header no-print">📝 Saisie des Ouvrages — {NOM_PROJET}</div>', unsafe_allow_html=True)
     edited_df = st.data_editor(
-        st.session_state.chassis_rows_v26,
+        st.session_state.chassis_rows_v27,
         num_rows="dynamic",
         column_config={
             "Repère": st.column_config.TextColumn("N° Châssis (Auto)", disabled=True),
@@ -312,14 +353,14 @@ if menu_selection == "📝 Saisie des Ouvrages":
             "Vitrage": st.column_config.TextColumn("Vitrage (ex: 4/16/4)"),
         },
         use_container_width=True,
-        key="project_editor_v26"
+        key="project_editor_v27"
     )
     df_auto_calcule = generer_reperes_auto(edited_df)
     if not edited_df["Repère"].equals(df_auto_calcule["Repère"]):
-        st.session_state.chassis_rows_v26 = df_auto_calcule
+        st.session_state.chassis_rows_v27 = df_auto_calcule
         st.rerun()
     else:
-        st.session_state.chassis_rows_v26 = edited_df
+        st.session_state.chassis_rows_v27 = edited_df
     st.info("💡 N'oubliez pas de cliquer sur '💾 SAUVEGARDER LES MODIFICATIONS' dans le menu de gauche une fois votre saisie terminée.")
 
 elif menu_selection == "📐 Fiche Atelier & Débit":
@@ -332,7 +373,7 @@ elif menu_selection == "📐 Fiche Atelier & Débit":
     st.markdown('</div>', unsafe_allow_html=True)
 
     if btn_generer:
-        edited_project = st.session_state.chassis_rows_v26
+        edited_project = st.session_state.chassis_rows_v27
         dict_global_coupes = {}
         lignes_fiche_atelier = []
         match_trouve = False
@@ -437,10 +478,10 @@ elif menu_selection == "📐 Fiche Atelier & Débit":
                     pct_perte = (chute_restante / LONGUEUR_BRUTE) * 100
                     html_barre_div = '<div class="bar-container">'
                     for morceau in barre:
-                        lg = morceau["longueur"]; rep = morceau["repere"]; comp_name = morceau["composant"]
+                        moceau_lg = morceau["longueur"]; rep = morceau["repere"]; comp_name = morceau["composant"]
                         couleur = map_couleurs.get(rep, "#3B82F6")
-                        pct_largeur = ((lg + EPAISSEUR_SCIE) / LONGUEUR_BRUTE) * 100
-                        html_barre_div += f'<div class="bar-segment" style="width: {pct_largeur}%; background-color: {couleur};" title="{rep} - {comp_name} ({int(lg)}mm)">{int(lg)}</div>'
+                        pct_largeur = ((moceau_lg + EPAISSEUR_SCIE) / LONGUEUR_BRUTE) * 100
+                        html_barre_div += f'<div class="bar-segment" style="width: {pct_largeur}%; background-color: {couleur};" title="{rep} - {comp_name} ({int(moceau_lg)}mm)">{int(moceau_lg)}</div>'
                     if chute_restante > 0: html_barre_div += f'<div class="bar-chute" style="width: {(chute_restante/LONGUEUR_BRUTE)*100}%;"></div>'
                     html_barre_div += '</div>'
                     html_coupes += f'<tr><td class="center-text">{ref} (B{b_idx})</td><td style="padding: 4px;">{html_barre_div}</td><td class="center-text" style="font-weight: bold;">{qte_barre}</td><td class="center-text">{int(total_consomme)}</td><td class="center-text">{int(chute_restante)}</td><td class="center-text">{pct_perte:.1f}%</td></tr>'
@@ -465,7 +506,7 @@ elif menu_selection == "🪟 Carnet de Vitrage":
     st.markdown('</div>', unsafe_allow_html=True)
 
     if btn_calculer_vitrage:
-        edited_project = st.session_state.chassis_rows_v26
+        edited_project = st.session_state.chassis_rows_v27
         list_vitrages = []
         for index, row in edited_project.iterrows():
             type_ouvrage = str(row.get("Ouvrage", "")).strip()
@@ -548,7 +589,7 @@ elif menu_selection == "🛒 Quincaillerie & Joints":
     st.markdown('</div>', unsafe_allow_html=True)
 
     if btn_calculer_acc:
-        edited_project = st.session_state.chassis_rows_v26
+        edited_project = st.session_state.chassis_rows_v27
         list_recap_chassis = []; list_accessoires = []; list_joints = []
         for index, row in edited_project.iterrows():
             type_ouvrage = str(row.get("Ouvrage", "")).strip()
