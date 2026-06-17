@@ -343,24 +343,75 @@ NOM_PROJET = st.session_state.current_project_name
 
 if menu_selection == "📝 Saisie des Ouvrages":
     st.markdown(f'<div class="section-header no-print">📝 Saisie des Ouvrages — {NOM_PROJET}</div>', unsafe_allow_html=True)
+
+    # --- 1. FORMULAIRE D'AJOUT RAPIDE ---
+    st.markdown("### ⚡ Ajout rapide d'un châssis")
+    with st.form("form_ajout_rapide", clear_on_submit=True):
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            n_ouvrage = st.selectbox("Type d'Ouvrage", options=choix_types_dynamiques)
+            n_vitrage = st.text_input("Vitrage", placeholder="ex: 4/16/4")
+            
+        with col2:
+            n_largeur = st.number_input("Largeur (L) mm", min_value=100.0, value=1000.0, step=10.0)
+            n_hauteur = st.number_input("Hauteur (H) mm", min_value=100.0, value=1000.0, step=10.0)
+            
+        with col3:
+            n_qte = st.number_input("Quantité", min_value=1, value=1, step=1)
+            
+        with col4:
+            n_volet = st.selectbox("Volet Roulant", options=["non", "caisson tunnel", "caisson mono-bloc"])
+            n_h_caisson = st.number_input("H Caisson mm (si applicable)", min_value=0.0, value=0.0, step=10.0)
+
+        # Le bouton d'envoi du formulaire
+        submit_ajout = st.form_submit_button("➕ Ajouter ce châssis au projet", type="primary", use_container_width=True)
+
+        if submit_ajout:
+            # Création de la nouvelle ligne
+            nouvelle_ligne = pd.DataFrame([{
+                "Repère": "", # Sera généré automatiquement
+                "Ouvrage": n_ouvrage,
+                "Largeur (L)": float(n_largeur),
+                "Hauteur (H)": float(n_hauteur),
+                "Qté": int(n_qte),
+                "Volet Roulant": n_volet,
+                "H Caisson": float(n_h_caisson),
+                "Vitrage": n_vitrage
+            }])
+            
+            # Ajout de la ligne au tableau existant
+            st.session_state.chassis_rows_v27 = pd.concat([st.session_state.chassis_rows_v27, nouvelle_ligne], ignore_index=True)
+            # Mise à jour immédiate des repères (F1, F2...)
+            st.session_state.chassis_rows_v27 = generer_reperes_auto(st.session_state.chassis_rows_v27)
+            st.rerun()
+
+    st.markdown("---")
+    st.markdown("### 📋 Listing des châssis (Modifiable)")
+
+    # --- 2. TABLEAU DE RÉVISION ---
     edited_df = st.data_editor(
         st.session_state.chassis_rows_v27,
         num_rows="dynamic",
         column_config={
-            "Repère": st.column_config.TextColumn("N° Châssis (Auto)", disabled=True),
+            "Repère": st.column_config.TextColumn("N° (Auto)", disabled=True, width="small"),
             "Ouvrage": st.column_config.SelectboxColumn(options=choix_types_dynamiques),
             "Volet Roulant": st.column_config.SelectboxColumn(options=["non", "caisson tunnel", "caisson mono-bloc"]),
             "Vitrage": st.column_config.TextColumn("Vitrage (ex: 4/16/4)"),
         },
         use_container_width=True,
-        key="project_editor_v27"
+        key="project_editor_v27" # Cette clé stabilise l'éditeur
     )
+    
+    # Recalcul des repères au cas où l'utilisateur supprime une ligne ou change l'ordre
     df_auto_calcule = generer_reperes_auto(edited_df)
+    
     if not edited_df["Repère"].equals(df_auto_calcule["Repère"]):
         st.session_state.chassis_rows_v27 = df_auto_calcule
         st.rerun()
     else:
         st.session_state.chassis_rows_v27 = edited_df
+        
     st.info("💡 N'oubliez pas de cliquer sur '💾 SAUVEGARDER LES MODIFICATIONS' dans le menu de gauche une fois votre saisie terminée.")
 
 elif menu_selection == "📐 Fiche Atelier & Débit":
