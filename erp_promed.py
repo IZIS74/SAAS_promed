@@ -183,18 +183,12 @@ if not choix_series_dynamiques: choix_series_dynamiques = ["-"]
 if not choix_types_dynamiques: choix_types_dynamiques = ["-"]
 
 def get_default_df():
-    return pd.DataFrame([{
-        "Repère": "F1" if choix_types_dynamiques[0].upper().startswith("F") else "O1", 
-        "Gamme": choix_gammes_dynamiques[0],
-        "Série": choix_series_dynamiques[0],
-        "Ouvrage": choix_types_dynamiques[0], 
-        "Largeur (L)": 1000.0, 
-        "Hauteur (H)": 1000.0, 
-        "Qté": 1, 
-        "Volet Roulant": "non", 
-        "H Caisson": 0.0, 
-        "Vitrage": ""
-    }])
+    # Retourne un tableau 100% vide, mais avec la structure des colonnes préparée
+    return pd.DataFrame(columns=[
+        "Repère", "Gamme", "Série", "Ouvrage", 
+        "Largeur (L)", "Hauteur (H)", "Qté", 
+        "Volet Roulant", "H Caisson", "Vitrage"
+    ])
 
 if "chassis_rows_v27" not in st.session_state:
     st.session_state.chassis_rows_v27 = get_default_df()
@@ -386,12 +380,9 @@ if menu_selection == "📝 Saisie des Ouvrages":
     # ==========================================
     # ÉTAPE 1 : CHOIX DU MODÈLE (Dynamique, hors formulaire)
     # ==========================================
-    # ==========================================
-    # ÉTAPE 1 : CHOIX DU MODÈLE (Dynamique, hors formulaire)
-    # ==========================================
     st.markdown("### ⚙️ 1. Choix du Modèle")
     
-    # On ajoute une 4ème colonne pour l'image (les chiffres gèrent la largeur des colonnes)
+    # On ajoute une 4ème colonne pour l'image
     colA, colB, colC, col_img = st.columns([2, 2, 2, 1]) 
     
     # 1. Sélection de la Gamme
@@ -409,23 +400,33 @@ if menu_selection == "📝 Saisie des Ouvrages":
     if not choix_ouvrages_dyn: choix_ouvrages_dyn = ["-"]
     sel_ouvrage = colC.selectbox("Type d'Ouvrage", options=choix_ouvrages_dyn)
 
-    # 4. Affichage de l'image correspondante
+    # 4. Affichage de l'image correspondante depuis ton dossier local sur GitHub
     with col_img:
-        # Dictionnaire : relie le nom exact de ton ouvrage à l'URL d'une image
-        # Il faudra remplacer ces liens par tes propres images hébergées ou locales !
+        # Dictionnaire associant le type d'ouvrage à ton image
+        # J'ai lié ça aux noms de fichiers que j'ai vus dans ta capture d'écran
         images_ouvrages = {
-            "F C 2V": "https://cdn-icons-png.flaticon.com/512/3038/3038038.png", # Exemple icône fenêtre
-            "F CM 3V": "https://cdn-icons-png.flaticon.com/512/3038/3038038.png",
-            "PF C 2V": "https://cdn-icons-png.flaticon.com/512/1036/1036154.png"  # Exemple icône porte
+            "F CM 3V": "images/f_cm_3v.png",
+            "F O 1V": "images/f_o_1v.png",
+            "F C 1V": "images/f_o_1v.png", # Si C (coulissant) a la même image que O (ouvrant) temporairement
+            "F O 2V": "images/f_o_2v.png",
+            "F C 2V": "images/f_o_2v.png",
+            "P O 1V": "images/p_o_1v.png",
+            "P O 2V": "images/p_o_2v.png",
+            "PF O 2V": "images/pf_o_2v.png",
+            "PF C 2V": "images/pf_o_2v.png"
         }
         
-        # Image par défaut si l'ouvrage n'est pas dans le dictionnaire
+        # Image par défaut si le type d'ouvrage n'est pas dans le dictionnaire
         img_par_defaut = "https://cdn-icons-png.flaticon.com/512/1085/1085695.png" 
         
         url_img = images_ouvrages.get(sel_ouvrage, img_par_defaut)
         
         st.write("") # Petit espace pour aligner
-        st.image(url_img, width=80)
+        try:
+            st.image(url_img, width=100)
+        except:
+            st.image(img_par_defaut, width=100) # Fallback si l'image n'est pas trouvée
+
     # ==========================================
     # ÉTAPE 2 : SAISIE DES DIMENSIONS (Dans le formulaire)
     # ==========================================
@@ -498,6 +499,7 @@ if menu_selection == "📝 Saisie des Ouvrages":
         st.session_state.chassis_rows_v27 = edited_df
         
     st.info("💡 N'oubliez pas de cliquer sur '💾 SAUVEGARDER LES MODIFICATIONS' dans le menu de gauche une fois votre saisie terminée.")
+
 elif menu_selection == "📐 Fiche Atelier & Débit":
     st.markdown('<div class="section-header no-print">📏 Configuration de Coupe</div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
