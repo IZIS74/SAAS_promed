@@ -22,27 +22,36 @@ except Exception as e:
 # ==========================================
 # 🔐 GESTION DE L'AUTHENTIFICATION (MULTI-TENANT)
 # ==========================================
-if "user" not in st.session_state:
-    st.session_state.user = None
-if "access_token" not in st.session_state:
-    st.session_state.access_token = None
-if "refresh_token" not in st.session_state:
-    st.session_state.refresh_token = None
-if "entreprise_id" not in st.session_state:
-    st.session_state.entreprise_id = None
+for key in ["user", "access_token", "refresh_token", "entreprise_id", "user_nom", "nom_entreprise", "gammes_autorisees"]:
+    if key not in st.session_state:
+        st.session_state[key] = None if key != "gammes_autorisees" else []
 
-# États pour l'affichage personnalisé
-if "user_nom" not in st.session_state:
-    st.session_state.user_nom = None
-if "nom_entreprise" not in st.session_state:
-    st.session_state.nom_entreprise = None
+def fetch_entreprise_info(ent_id):
+    """Fonction utilitaire pour récupérer les infos de l'entreprise et ses gammes"""
+    try:
+        ent_res = supabase.table("entreprises").select("nom_entreprise, gammes_autorisees").eq("id", ent_id).execute()
+        if ent_res.data:
+            nom = ent_res.data[0].get("nom_entreprise", "Inconnue")
+            gammes_brutes = ent_res.data[0].get("gammes_autorisees", "[]")
+            
+            if isinstance(gammes_brutes, str):
+                try:
+                    gammes = json.loads(gammes_brutes)
+                except:
+                    gammes = []
+            else:
+                gammes = gammes_brutes if gammes_brutes else []
+            return nom, gammes
+    except:
+        pass
+    return "Inconnue", []
 
 # On rappelle à Supabase qui est connecté à chaque rechargement de page
 if st.session_state.access_token and st.session_state.refresh_token:
     try:
         supabase.auth.set_session(st.session_state.access_token, st.session_state.refresh_token)
         
-        # Sécurité : Si on perd le nom ou l'entreprise en mémoire, on les récupère
+        # Sécurité : Si on perd les infos en mémoire, on les récupère
         if st.session_state.entreprise_id and (not st.session_state.get('user_nom') or not st.session_state.get('nom_entreprise')):
             user_id = st.session_state.user.id if st.session_state.user else None
             if user_id:
@@ -50,9 +59,9 @@ if st.session_state.access_token and st.session_state.refresh_token:
                 if profile_res.data:
                     st.session_state.user_nom = profile_res.data[0].get("nom", "Utilisateur")
             
-            ent_res = supabase.table("entreprises").select("nom_entreprise").eq("id", st.session_state.entreprise_id).execute()
-            if ent_res.data:
-                st.session_state.nom_entreprise = ent_res.data[0].get("nom_entreprise", "Inconnue")
+            nom_ent, gammes = fetch_entreprise_info(st.session_state.entreprise_id)
+            st.session_state.nom_entreprise = nom_ent
+            st.session_state.gammes_autorisees = gammes
     except:
         st.session_state.user = None 
 
@@ -60,6 +69,7 @@ def logout():
     supabase.auth.sign_out()
     for key in ["user", "access_token", "refresh_token", "entreprise_id", "user_nom", "nom_entreprise"]:
         st.session_state[key] = None
+    st.session_state.gammes_autorisees = []
     st.cache_data.clear() 
     st.rerun()
 
@@ -81,7 +91,7 @@ if st.session_state.user is None:
                 st.session_state.access_token = response.session.access_token
                 st.session_state.refresh_token = response.session.refresh_token
                 
-                # Récupération du profil (ID entreprise + Nom utilisateur)
+                # Récupération du profil
                 user_id = response.user.id
                 profile_res = supabase.table("profiles").select("entreprise_id", "nom").eq("id", user_id).execute()
                 
@@ -89,10 +99,9 @@ if st.session_state.user is None:
                     st.session_state.entreprise_id = profile_res.data[0]["entreprise_id"]
                     st.session_state.user_nom = profile_res.data[0].get("nom", "Utilisateur")
                     
-                    # Récupération du nom de l'entreprise textuel
-                    ent_res = supabase.table("entreprises").select("nom_entreprise").eq("id", st.session_state.entreprise_id).execute()
-                    if ent_res.data:
-                        st.session_state.nom_entreprise = ent_res.data[0].get("nom_entreprise", "Inconnue")
+                    nom_ent, gammes = fetch_entreprise_info(st.session_state.entreprise_id)
+                    st.session_state.nom_entreprise = nom_ent
+                    st.session_state.gammes_autorisees = gammes
                     
                     st.cache_data.clear() 
                     st.rerun()
@@ -107,10 +116,8 @@ if st.session_state.user is None:
 
 # --- Utilisateur authentifié & lié à une entreprise ---
 
-# 🌟 TITRE PRINCIPAL MODIFIÉ
 st.markdown('<div class="main-title">OPTIALU</div>', unsafe_allow_html=True)
 
-# 🌟 BANDEAU D'AFFICHAGE (S'affichera sous le titre)
 nom_ent_affiche = st.session_state.get('nom_entreprise') or "Inconnue"
 nom_usr_affiche = st.session_state.get('user_nom') or "Utilisateur"
 
@@ -128,17 +135,22 @@ st.sidebar.button("🚪 Se déconnecter", on_click=logout, use_container_width=T
 st.sidebar.markdown("---")
 
 # ==========================================
-# GESTION DES DONNÉES & CATALOGUE
+# GESTION DES DONNÉES & CATALOGUE (FILTRÉ)
 # ==========================================
 @st.cache_data(ttl=3600) 
-def load_app_library():
+def load_app_library(entreprise_id, gammes_autorisees_liste):
     try:
-        response = supabase.table("bibliotheque_gammes").select("*").execute()
+        if not gammes_autorisees_liste:
+            return []
+            
+        # Filtrage Supabase par la colonne 'gamme'
+        response = supabase.table("bibliotheque_gammes").select("*").in_("gamme", gammes_autorisees_liste).execute()
         data_sql = response.data
         
         legacy_data = []
         for item in data_sql:
             legacy_data.append({
+                "Gamme": item.get("gamme", ""),
                 "Type Ouvrage": item.get("type_ouvrage", ""),
                 "Composant": item.get("composant", ""),
                 "Ref": item.get("ref", ""),
@@ -154,14 +166,28 @@ def load_app_library():
         st.error(f"⚠️ Erreur de chargement du catalogue depuis le Cloud : {e}")
         return []
 
-BIBLIOTHEQUE = load_app_library()
+mes_gammes = st.session_state.get("gammes_autorisees", [])
+mon_entreprise_id = st.session_state.get("entreprise_id", "inconnu")
+
+BIBLIOTHEQUE = load_app_library(mon_entreprise_id, mes_gammes)
 PALETTE_COULEURS = ["#1E40AF", "#10B981", "#D97706", "#DC2626", "#7C3AED", "#0891B2", "#EC4899"]
+
+# Génération des listes déroulantes dynamiques depuis la bibliothèque filtrée
+choix_gammes_dynamiques = sorted(list(set([str(x.get("Gamme", "")).strip() for x in BIBLIOTHEQUE if str(x.get("Gamme", "")).strip() != ""])))
+choix_series_dynamiques = sorted(list(set([str(x.get("Série", "")).strip() for x in BIBLIOTHEQUE if str(x.get("Série", "")).strip() != ""])))
 choix_types_dynamiques = sorted(list(set([str(x.get("Type Ouvrage", "")).strip() for x in BIBLIOTHEQUE if str(x.get("Type Ouvrage", "")).strip() != ""])))
+
+# Fallbacks si la bibliothèque est vide
+if not choix_gammes_dynamiques: choix_gammes_dynamiques = ["-"]
+if not choix_series_dynamiques: choix_series_dynamiques = ["-"]
+if not choix_types_dynamiques: choix_types_dynamiques = ["-"]
 
 def get_default_df():
     return pd.DataFrame([{
-        "Repère": "F1" if choix_types_dynamiques and choix_types_dynamiques[0].upper().startswith("F") else "O1", 
-        "Ouvrage": choix_types_dynamiques[0] if choix_types_dynamiques else "", 
+        "Repère": "F1" if choix_types_dynamiques[0].upper().startswith("F") else "O1", 
+        "Gamme": choix_gammes_dynamiques[0],
+        "Série": choix_series_dynamiques[0],
+        "Ouvrage": choix_types_dynamiques[0], 
         "Largeur (L)": 1000.0, 
         "Hauteur (H)": 1000.0, 
         "Qté": 1, 
@@ -170,7 +196,6 @@ def get_default_df():
         "Vitrage": ""
     }])
 
-# Initialisation des états de session pour le projet actif avec la version 27
 if "chassis_rows_v27" not in st.session_state:
     st.session_state.chassis_rows_v27 = get_default_df()
 if "current_project_name" not in st.session_state:
@@ -262,7 +287,12 @@ if st.sidebar.button("Charger ce projet", use_container_width=True):
             response = supabase.table("projets").select("donnees").eq("id", target_id).eq("entreprise_id", st.session_state.entreprise_id).execute()
             if response.data:
                 df_charge = pd.DataFrame(response.data[0]["donnees"])
-                colonnes_ordre = ["Repère", "Ouvrage", "Largeur (L)", "Hauteur (H)", "Qté", "Volet Roulant", "H Caisson", "Vitrage"]
+                
+                # Ajout des colonnes Gamme et Série si c'est un vieux projet
+                if "Gamme" not in df_charge.columns: df_charge["Gamme"] = choix_gammes_dynamiques[0]
+                if "Série" not in df_charge.columns: df_charge["Série"] = choix_series_dynamiques[0]
+
+                colonnes_ordre = ["Repère", "Gamme", "Série", "Ouvrage", "Largeur (L)", "Hauteur (H)", "Qté", "Volet Roulant", "H Caisson", "Vitrage"]
                 df_charge = df_charge.reindex(columns=colonnes_ordre)
                 
                 st.session_state.chassis_rows_v27 = df_charge
@@ -350,27 +380,29 @@ if menu_selection == "📝 Saisie des Ouvrages":
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
+            n_gamme = st.selectbox("Gamme", options=choix_gammes_dynamiques)
             n_ouvrage = st.selectbox("Type d'Ouvrage", options=choix_types_dynamiques)
-            n_vitrage = st.text_input("Vitrage", placeholder="ex: 4/16/4")
             
         with col2:
+            n_serie = st.selectbox("Série", options=choix_series_dynamiques)
             n_largeur = st.number_input("Largeur (L) mm", min_value=100.0, value=1000.0, step=10.0)
             n_hauteur = st.number_input("Hauteur (H) mm", min_value=100.0, value=1000.0, step=10.0)
             
         with col3:
             n_qte = st.number_input("Quantité", min_value=1, value=1, step=1)
+            n_vitrage = st.text_input("Vitrage", placeholder="ex: 4/16/4")
             
         with col4:
             n_volet = st.selectbox("Volet Roulant", options=["non", "caisson tunnel", "caisson mono-bloc"])
             n_h_caisson = st.number_input("H Caisson mm (si applicable)", min_value=0.0, value=0.0, step=10.0)
 
-        # Le bouton d'envoi du formulaire
         submit_ajout = st.form_submit_button("➕ Ajouter ce châssis au projet", type="primary", use_container_width=True)
 
         if submit_ajout:
-            # Création de la nouvelle ligne
             nouvelle_ligne = pd.DataFrame([{
-                "Repère": "", # Sera généré automatiquement
+                "Repère": "",
+                "Gamme": n_gamme,
+                "Série": n_serie,
                 "Ouvrage": n_ouvrage,
                 "Largeur (L)": float(n_largeur),
                 "Hauteur (H)": float(n_hauteur),
@@ -380,9 +412,11 @@ if menu_selection == "📝 Saisie des Ouvrages":
                 "Vitrage": n_vitrage
             }])
             
-            # Ajout de la ligne au tableau existant
+            if "Gamme" not in st.session_state.chassis_rows_v27.columns:
+                st.session_state.chassis_rows_v27["Gamme"] = choix_gammes_dynamiques[0]
+                st.session_state.chassis_rows_v27["Série"] = choix_series_dynamiques[0]
+
             st.session_state.chassis_rows_v27 = pd.concat([st.session_state.chassis_rows_v27, nouvelle_ligne], ignore_index=True)
-            # Mise à jour immédiate des repères (F1, F2...)
             st.session_state.chassis_rows_v27 = generer_reperes_auto(st.session_state.chassis_rows_v27)
             st.rerun()
 
@@ -395,15 +429,16 @@ if menu_selection == "📝 Saisie des Ouvrages":
         num_rows="dynamic",
         column_config={
             "Repère": st.column_config.TextColumn("N° (Auto)", disabled=True, width="small"),
-            "Ouvrage": st.column_config.SelectboxColumn(options=choix_types_dynamiques),
+            "Gamme": st.column_config.SelectboxColumn("Gamme", options=choix_gammes_dynamiques),
+            "Série": st.column_config.SelectboxColumn("Série", options=choix_series_dynamiques),
+            "Ouvrage": st.column_config.SelectboxColumn("Ouvrage", options=choix_types_dynamiques),
             "Volet Roulant": st.column_config.SelectboxColumn(options=["non", "caisson tunnel", "caisson mono-bloc"]),
             "Vitrage": st.column_config.TextColumn("Vitrage (ex: 4/16/4)"),
         },
         use_container_width=True,
-        key="project_editor_v27" # Cette clé stabilise l'éditeur
+        key="project_editor_v27"
     )
     
-    # Recalcul des repères au cas où l'utilisateur supprime une ligne ou change l'ordre
     df_auto_calcule = generer_reperes_auto(edited_df)
     
     if not edited_df["Repère"].equals(df_auto_calcule["Repère"]):
