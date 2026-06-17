@@ -402,18 +402,18 @@ if menu_selection == "📝 Saisie des Ouvrages":
 
     # 4. Affichage de l'image correspondante depuis ton dossier local sur GitHub
     with col_img:
-        # Dictionnaire associant le type d'ouvrage à ton image
-        # J'ai lié ça aux noms de fichiers que j'ai vus dans ta capture d'écran
+        # Dictionnaire corrigé avec les noms EXACTS de tes fichiers
         images_ouvrages = {
-            "F CM 3V": "images/f_cm_3v.png",
-            "F O 1V": "images/f_o_1v.png",
-            "F C 1V": "images/f_o_1v.png", # Si C (coulissant) a la même image que O (ouvrant) temporairement
-            "F O 2V": "images/f_o_2v.png",
-            "F C 2V": "images/f_o_2v.png",
-            "P O 1V": "images/p_o_1v.png",
-            "P O 2V": "images/p_o_2v.png",
-            "PF O 2V": "images/pf_o_2v.png",
-            "PF C 2V": "images/pf_o_2v.png"
+            "F CM 3V": "images/f_cm3v.png",
+            "F O 1V": "images/f_o1v.png",
+            "F C 1V": "images/f_o1v.png", # Si C (coulissant) a la même image que O (ouvrant) temporairement
+            "F O 2V": "images/f_o2v.png",
+            "F C 2V": "images/f_c2v.png",
+            "F C 3V": "images/f_c3v.png",
+            "P O 1V": "images/p_o1v.png",
+            "P O 2V": "images/p_o2v.png",
+            "PF O 2V": "images/pf_o2v.png",
+            "PF C 2V": "images/pf_o2v.png"
         }
         
         # Image par défaut si le type d'ouvrage n'est pas dans le dictionnaire
