@@ -386,8 +386,13 @@ if menu_selection == "📝 Saisie des Ouvrages":
     # ==========================================
     # ÉTAPE 1 : CHOIX DU MODÈLE (Dynamique, hors formulaire)
     # ==========================================
+    # ==========================================
+    # ÉTAPE 1 : CHOIX DU MODÈLE (Dynamique, hors formulaire)
+    # ==========================================
     st.markdown("### ⚙️ 1. Choix du Modèle")
-    colA, colB, colC = st.columns(3)
+    
+    # On ajoute une 4ème colonne pour l'image (les chiffres gèrent la largeur des colonnes)
+    colA, colB, colC, col_img = st.columns([2, 2, 2, 1]) 
     
     # 1. Sélection de la Gamme
     sel_gamme = colA.selectbox("Gamme", options=global_gammes)
@@ -404,6 +409,23 @@ if menu_selection == "📝 Saisie des Ouvrages":
     if not choix_ouvrages_dyn: choix_ouvrages_dyn = ["-"]
     sel_ouvrage = colC.selectbox("Type d'Ouvrage", options=choix_ouvrages_dyn)
 
+    # 4. Affichage de l'image correspondante
+    with col_img:
+        # Dictionnaire : relie le nom exact de ton ouvrage à l'URL d'une image
+        # Il faudra remplacer ces liens par tes propres images hébergées ou locales !
+        images_ouvrages = {
+            "F C 2V": "https://cdn-icons-png.flaticon.com/512/3038/3038038.png", # Exemple icône fenêtre
+            "F CM 3V": "https://cdn-icons-png.flaticon.com/512/3038/3038038.png",
+            "PF C 2V": "https://cdn-icons-png.flaticon.com/512/1036/1036154.png"  # Exemple icône porte
+        }
+        
+        # Image par défaut si l'ouvrage n'est pas dans le dictionnaire
+        img_par_defaut = "https://cdn-icons-png.flaticon.com/512/1085/1085695.png" 
+        
+        url_img = images_ouvrages.get(sel_ouvrage, img_par_defaut)
+        
+        st.write("") # Petit espace pour aligner
+        st.image(url_img, width=80)
     # ==========================================
     # ÉTAPE 2 : SAISIE DES DIMENSIONS (Dans le formulaire)
     # ==========================================
