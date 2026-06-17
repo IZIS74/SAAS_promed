@@ -374,25 +374,52 @@ NOM_PROJET = st.session_state.current_project_name
 if menu_selection == "📝 Saisie des Ouvrages":
     st.markdown(f'<div class="section-header no-print">📝 Saisie des Ouvrages — {NOM_PROJET}</div>', unsafe_allow_html=True)
 
-    # --- 1. FORMULAIRE D'AJOUT RAPIDE ---
-    st.markdown("### ⚡ Ajout rapide d'un châssis")
+    # --- LISTES GLOBALES (Pour le tableau récapitulatif en bas) ---
+    global_gammes = sorted(list(set([str(x.get("Gamme", "")).strip() for x in BIBLIOTHEQUE if str(x.get("Gamme", "")).strip() != ""])))
+    global_series = sorted(list(set([str(x.get("Série", "")).strip() for x in BIBLIOTHEQUE if str(x.get("Série", "")).strip() != ""])))
+    global_ouvrages = sorted(list(set([str(x.get("Type Ouvrage", "")).strip() for x in BIBLIOTHEQUE if str(x.get("Type Ouvrage", "")).strip() != ""])))
+
+    if not global_gammes: global_gammes = ["-"]
+    if not global_series: global_series = ["-"]
+    if not global_ouvrages: global_ouvrages = ["-"]
+
+    # ==========================================
+    # ÉTAPE 1 : CHOIX DU MODÈLE (Dynamique, hors formulaire)
+    # ==========================================
+    st.markdown("### ⚙️ 1. Choix du Modèle")
+    colA, colB, colC = st.columns(3)
+    
+    # 1. Sélection de la Gamme
+    sel_gamme = colA.selectbox("Gamme", options=global_gammes)
+    
+    # 2. Filtrage et sélection de la Série
+    biblio_gamme = [x for x in BIBLIOTHEQUE if str(x.get("Gamme", "")).strip() == sel_gamme]
+    choix_series_dyn = sorted(list(set([str(x.get("Série", "")).strip() for x in biblio_gamme if str(x.get("Série", "")).strip() != ""])))
+    if not choix_series_dyn: choix_series_dyn = ["-"]
+    sel_serie = colB.selectbox("Série", options=choix_series_dyn)
+    
+    # 3. Filtrage et sélection de l'Ouvrage
+    biblio_serie = [x for x in biblio_gamme if str(x.get("Série", "")).strip() == sel_serie]
+    choix_ouvrages_dyn = sorted(list(set([str(x.get("Type Ouvrage", "")).strip() for x in biblio_serie if str(x.get("Type Ouvrage", "")).strip() != ""])))
+    if not choix_ouvrages_dyn: choix_ouvrages_dyn = ["-"]
+    sel_ouvrage = colC.selectbox("Type d'Ouvrage", options=choix_ouvrages_dyn)
+
+    # ==========================================
+    # ÉTAPE 2 : SAISIE DES DIMENSIONS (Dans le formulaire)
+    # ==========================================
+    st.markdown("### ⚡ 2. Dimensions & Ajout rapide")
     with st.form("form_ajout_rapide", clear_on_submit=True):
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            n_gamme = st.selectbox("Gamme", options=choix_gammes_dynamiques)
-            n_ouvrage = st.selectbox("Type d'Ouvrage", options=choix_types_dynamiques)
-            
-        with col2:
-            n_serie = st.selectbox("Série", options=choix_series_dynamiques)
             n_largeur = st.number_input("Largeur (L) mm", min_value=100.0, value=1000.0, step=10.0)
             n_hauteur = st.number_input("Hauteur (H) mm", min_value=100.0, value=1000.0, step=10.0)
             
-        with col3:
+        with col2:
             n_qte = st.number_input("Quantité", min_value=1, value=1, step=1)
             n_vitrage = st.text_input("Vitrage", placeholder="ex: 4/16/4")
             
-        with col4:
+        with col3:
             n_volet = st.selectbox("Volet Roulant", options=["non", "caisson tunnel", "caisson mono-bloc"])
             n_h_caisson = st.number_input("H Caisson mm (si applicable)", min_value=0.0, value=0.0, step=10.0)
 
@@ -401,9 +428,9 @@ if menu_selection == "📝 Saisie des Ouvrages":
         if submit_ajout:
             nouvelle_ligne = pd.DataFrame([{
                 "Repère": "",
-                "Gamme": n_gamme,
-                "Série": n_serie,
-                "Ouvrage": n_ouvrage,
+                "Gamme": sel_gamme,       # Récupéré de l'étape 1
+                "Série": sel_serie,       # Récupéré de l'étape 1
+                "Ouvrage": sel_ouvrage,   # Récupéré de l'étape 1
                 "Largeur (L)": float(n_largeur),
                 "Hauteur (H)": float(n_hauteur),
                 "Qté": int(n_qte),
@@ -412,9 +439,10 @@ if menu_selection == "📝 Saisie des Ouvrages":
                 "Vitrage": n_vitrage
             }])
             
+            # Sécurité pour les anciens projets sans ces colonnes
             if "Gamme" not in st.session_state.chassis_rows_v27.columns:
-                st.session_state.chassis_rows_v27["Gamme"] = choix_gammes_dynamiques[0]
-                st.session_state.chassis_rows_v27["Série"] = choix_series_dynamiques[0]
+                st.session_state.chassis_rows_v27["Gamme"] = sel_gamme
+                st.session_state.chassis_rows_v27["Série"] = sel_serie
 
             st.session_state.chassis_rows_v27 = pd.concat([st.session_state.chassis_rows_v27, nouvelle_ligne], ignore_index=True)
             st.session_state.chassis_rows_v27 = generer_reperes_auto(st.session_state.chassis_rows_v27)
@@ -423,15 +451,15 @@ if menu_selection == "📝 Saisie des Ouvrages":
     st.markdown("---")
     st.markdown("### 📋 Listing des châssis (Modifiable)")
 
-    # --- 2. TABLEAU DE RÉVISION ---
+    # --- TABLEAU DE RÉVISION ---
     edited_df = st.data_editor(
         st.session_state.chassis_rows_v27,
         num_rows="dynamic",
         column_config={
             "Repère": st.column_config.TextColumn("N° (Auto)", disabled=True, width="small"),
-            "Gamme": st.column_config.SelectboxColumn("Gamme", options=choix_gammes_dynamiques),
-            "Série": st.column_config.SelectboxColumn("Série", options=choix_series_dynamiques),
-            "Ouvrage": st.column_config.SelectboxColumn("Ouvrage", options=choix_types_dynamiques),
+            "Gamme": st.column_config.SelectboxColumn("Gamme", options=global_gammes),
+            "Série": st.column_config.SelectboxColumn("Série", options=global_series),
+            "Ouvrage": st.column_config.SelectboxColumn("Ouvrage", options=global_ouvrages),
             "Volet Roulant": st.column_config.SelectboxColumn(options=["non", "caisson tunnel", "caisson mono-bloc"]),
             "Vitrage": st.column_config.TextColumn("Vitrage (ex: 4/16/4)"),
         },
@@ -448,7 +476,6 @@ if menu_selection == "📝 Saisie des Ouvrages":
         st.session_state.chassis_rows_v27 = edited_df
         
     st.info("💡 N'oubliez pas de cliquer sur '💾 SAUVEGARDER LES MODIFICATIONS' dans le menu de gauche une fois votre saisie terminée.")
-
 elif menu_selection == "📐 Fiche Atelier & Débit":
     st.markdown('<div class="section-header no-print">📏 Configuration de Coupe</div>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
