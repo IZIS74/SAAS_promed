@@ -338,16 +338,31 @@ def safe_float(val, default=1.0):
 
 def evaluer_formule(formule, L, H, hC, nom_composant):
     if not formule or str(formule).strip() in ["-", ""]: return 0.0
+    
+    # 1. Nettoyage de base et sécurité sur les multiplications
     f = str(formule).replace('=', '').replace(',', '.').upper().strip()
+    f = f.replace('X', '*') # Remplacement des x par des vrais signes de multiplication
+    
     nom_comp_maj = str(nom_composant).upper()
+    
+    # 2. Remplacement des variables de dimensions
     if "H" in f:
-        if "COUVRE" in nom_comp_maj or "CJ" in nom_comp_maj: f = f.replace("H", str(H))
-        else: f = f.replace("H", f"({H} - {hC})")
-    if "L" in f: f = f.replace("L", str(L))
+        if "COUVRE" in nom_comp_maj or "CJ" in nom_comp_maj: 
+            f = f.replace("H", str(H))
+        else: 
+            f = f.replace("H", f"({H} - {hC})")
+            
+    if "L" in f: 
+        f = f.replace("L", str(L))
+        
+    # 3. Purge stricte : On ne garde que les maths (les 'X' sont déjà devenus des '*')
     f = re.sub(r'[^0-9\+\-\*\/\(\)\.]', '', f)
-    try: return round(float(eval(f)), 1)
-    except: return 0.0
-
+    
+    # 4. Évaluation sécurisée
+    try: 
+        return round(float(eval(f)), 1)
+    except: 
+        return 0.0
 def generer_reperes_auto(df):
     c_f = 0; c_p = 0; c_pf = 0; c_o = 0
     new_reperes = []
