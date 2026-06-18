@@ -685,7 +685,7 @@ elif menu_selection == "🪟 Carnet de Vitrage":
                 qte_comp = safe_float(comp.get("Qté", 1), 1.0)
                 qte_totale = int(qte_comp * qte_ouvrage)
                 
-                base_des = designation.replace("Largeur", "").replace("largeur", "").replace(" L", "").replace(" H", "").replace("Hauteur", "").replace("hauteur", "").strip()
+                base_des = designation.replace("Largeur", "").replace("largeur", "").replace("Hauteur", "").replace("hauteur", "").replace(" L", "").replace(" H", "").strip()
                 if not base_des or base_des == "-": base_des = "Vitrage Ouvrage"
                 
                 if base_des not in vitrages_groupes:
